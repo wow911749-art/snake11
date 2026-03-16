@@ -394,10 +394,12 @@ class Button:
     def is_clicked(self, event):
         if event.type==pygame.MOUSEBUTTONDOWN and event.button==1:
             if self.rect.collidepoint(event.pos):
-                self.click_t=1.0; return True
+                self.click_t=1.0
+                # Звук воспроизводится снаружи через play_snd
+                return True
         return False
 
-    def draw(self, surf):
+    def draw(self, surf, icon_fn=None):
         t=ease_out(self.hover_t)
         sc=1.0+0.03*t-0.02*self.click_t
         rw=int(self.rect.w*sc); rh=int(self.rect.h*sc)
@@ -409,9 +411,23 @@ class Button:
         if t>0.1:
             gl=make_glow(max(4,rh//3),self.color,int(28*t))
             surf.blit(gl,(rx+rw//2-rh//3-1,ry+rh//2-rh//3-1))
+        # Иконка слева если передана функция
+        icon_x = rx + 22
+        icon_y = ry + rh//2
+        text_offset = 0
+        if icon_fn:
+            icon_fn(surf, icon_x, icon_y, rh//3, lerpC(T_DIM, self.color, t))
+            text_offset = rh//3 + 14
         tc=lerpC(T_MN,self.color,t)
-        draw_text_glow(surf,self.font,self.text,tc,rx+rw//2,ry+rh//2-self.font.size("A")[1]//2,
-                       self.color,passes=int(2*t))
+        txt=self.font.render(self.text, True, tc)
+        tx=rx+rw//2-txt.get_width()//2+text_offset//2
+        ty=ry+rh//2-txt.get_height()//2
+        # Свечение текста при ховере
+        if t>0.3:
+            glow_txt=self.font.render(self.text, True, self.color)
+            glow_txt.set_alpha(int(40*t))
+            surf.blit(glow_txt,(tx+1,ty+1))
+        surf.blit(txt,(tx,ty))
 
 # ══════════════════════════════════════════════════════════════
 #  ПОЛЕ И СЕТКА
@@ -548,6 +564,61 @@ def draw_panel(surf, W, score, best, lv, skin_key):
     pygame.draw.circle(surf,skin["head1"],(W-14,14),4)
 
 # ══════════════════════════════════════════════════════════════
+#  ИКОНКИ ДЛЯ КНОПОК (рисуются через pygame, без файлов)
+# ══════════════════════════════════════════════════════════════
+
+def icon_play(surf, cx, cy, r, color):
+    """Треугольник-плей"""
+    pts = [
+        (cx - r//2, cy - r),
+        (cx - r//2, cy + r),
+        (cx + r,    cy),
+    ]
+    pygame.draw.polygon(surf, color, pts)
+    g = make_glow(r+2, color, 50)
+    surf.blit(g, (cx-r-3, cy-r-3))
+
+def icon_palette(surf, cx, cy, r, color):
+    """Палитра — круг с точками"""
+    pygame.draw.circle(surf, color, (cx, cy), r, 2)
+    dots = [(cx, cy-r+4), (cx+r-4, cy), (cx, cy+r-4), (cx-r+4, cy)]
+    dot_colors = [(255,80,80),(80,180,255),(80,255,120),(255,220,60)]
+    for i,(dx,dy) in enumerate(dots):
+        pygame.draw.circle(surf, dot_colors[i], (dx,dy), max(2, r//4))
+
+def icon_trophy(surf, cx, cy, r, color):
+    """Кубок"""
+    # Чаша
+    pygame.draw.arc(surf, color,
+        pygame.Rect(cx-r, cy-r, r*2, r*2), math.pi, math.tau, 2)
+    # Ручки
+    pygame.draw.arc(surf, color,
+        pygame.Rect(cx-r-r//2, cy-r//2, r, r), math.pi*0.5, math.pi*1.5, 2)
+    pygame.draw.arc(surf, color,
+        pygame.Rect(cx+r//2, cy-r//2, r, r), math.pi*1.5, math.pi*2.5, 2)
+    # Ножка
+    pygame.draw.line(surf, color, (cx, cy+r//2), (cx, cy+r), 2)
+    pygame.draw.line(surf, color, (cx-r//2, cy+r), (cx+r//2, cy+r), 2)
+
+def icon_gear(surf, cx, cy, r, color):
+    """Шестерёнка"""
+    pygame.draw.circle(surf, color, (cx, cy), r//2, 2)
+    for i in range(8):
+        a = i * math.tau / 8
+        x1 = cx + int((r//2) * math.cos(a))
+        y1 = cy + int((r//2) * math.sin(a))
+        x2 = cx + int(r * math.cos(a))
+        y2 = cy + int(r * math.sin(a))
+        pygame.draw.line(surf, color, (x1,y1), (x2,y2), 2)
+
+def icon_exit(surf, cx, cy, r, color):
+    """Крестик выхода"""
+    pygame.draw.line(surf, color, (cx-r, cy-r), (cx+r, cy+r), 3)
+    pygame.draw.line(surf, color, (cx+r, cy-r), (cx-r, cy+r), 3)
+
+MENU_ICONS = [icon_play, icon_palette, icon_trophy, icon_gear, icon_exit]
+
+# ══════════════════════════════════════════════════════════════
 #  ГЛАВНОЕ МЕНЮ
 # ══════════════════════════════════════════════════════════════
 
@@ -566,8 +637,9 @@ class MainMenu:
     def handle(self, event, save):
         for i,b in enumerate(self.btns):
             if b.is_clicked(event):
-                play_snd(SND_CLICK,save)
-                return [STATE_GAME,STATE_SKINS,STATE_RECORDS,STATE_SETTINGS,None][i]
+                if i==4: pygame.quit(); sys.exit()
+                play_snd(SND_CLICK, save)
+                return [STATE_GAME, STATE_SKINS, STATE_RECORDS, STATE_SETTINGS, None][i]
         return None
 
     def update(self, mx, my, dt):
@@ -585,7 +657,8 @@ class MainMenu:
         games=self.save.get("total_games",0)
         st2=F_XSM.render(f"Игр: {games}   Лучший счёт: {best}   Сохранения: snake_save.json",True,T_DIM)
         surf.blit(st2,(W//2-st2.get_width()//2,H-36))
-        for b in self.btns: b.draw(surf)
+        for i, b in enumerate(self.btns):
+            b.draw(surf, MENU_ICONS[i])
 
     def _bg_snake(self, surf, W, H):
         t=self.tk*0.025; skin=SKINS["neon_green"]; n=20
@@ -619,15 +692,15 @@ class SkinsScreen:
 
     def handle(self, event, save):
         if self.back.is_clicked(event):
-            play_snd(SND_CLICK,save); return STATE_MENU,save
+            play_snd(SND_CLICK, save); return STATE_MENU, save
         if self.apply.is_clicked(event):
             save["current_skin"]=self.selected; save_data(save)
-            play_snd(SND_CLICK,save); return STATE_MENU,save
+            play_snd(SND_CLICK, save); return STATE_MENU, save
         if event.type==pygame.MOUSEBUTTONDOWN and event.button==1:
             for c in self.cards:
                 if c["rect"].collidepoint(event.pos):
-                    self.selected=c["key"]; play_snd(SND_CLICK,save)
-        return None,save
+                    self.selected=c["key"]; play_snd(SND_CLICK, save)
+        return None, save
 
     def update(self, mx, my, dt):
         self.tk+=1; self.back.update(mx,my,dt); self.apply.update(mx,my,dt)
@@ -671,7 +744,9 @@ class RecordsScreen:
         self.back=Button(30,H-70,140,46,"← НАЗАД",T_DIM)
 
     def handle(self, event, save):
-        if self.back.is_clicked(event): play_snd(SND_CLICK,save); return STATE_MENU
+        if self.back.is_clicked(event):
+            play_snd(SND_CLICK, save)
+            return STATE_MENU
         return None
 
     def update(self, mx, my, dt):
@@ -726,7 +801,8 @@ class SettingsScreen:
         self.open_btn =Button(W//2-140,H//2+90,280,52,"📂  ОТКРЫТЬ ПАПКУ",T_MN)
 
     def handle(self, event, save):
-        if self.back.is_clicked(event): return STATE_MENU,save
+        if self.back.is_clicked(event):
+            play_snd(SND_CLICK, save); return STATE_MENU, save
         if self.sound_btn.is_clicked(event):
             save["sound_on"]=not save.get("sound_on",True)
             self.sound_btn.text="🔊 ЗВУК: ВКЛ" if save["sound_on"] else "🔇 ЗВУК: ВЫКЛ"
@@ -740,7 +816,7 @@ class SettingsScreen:
                 import subprocess
                 subprocess.Popen(f'explorer "{folder}"')
             except: pass
-        return None,save
+        return None, save
 
     def update(self, mx, my, dt):
         self.back.update(mx,my,dt); self.sound_btn.update(mx,my,dt)
