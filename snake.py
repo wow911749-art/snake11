@@ -203,38 +203,40 @@ def clear_glow_cache():
 #  ЗВУКИ
 # ══════════════════════════════════════════════════════════════
 
+def _make_sound_from_buf(buf):
+    import numpy as np
+    arr = np.array(buf, dtype=np.int16)
+    stereo = np.column_stack([arr, arr])
+    return pygame.sndarray.make_sound(stereo)
+
 def gen_eat():
-    sr = 44100; n = int(sr * 0.12); buf = []
+    sr=44100; n=int(sr*0.12); buf=[]
     for i in range(n):
-        t = i/sr; f = 400 + 600*(i/n)
+        t=i/sr; f=400+600*(i/n)
         buf.append(int(math.sin(2*math.pi*f*t)*math.exp(-4*t/0.12)*0.4*32767))
-    return pygame.sndarray.make_sound(
-        pygame.sndarray.array(buf).astype("int16").reshape(-1,1).repeat(2,axis=1))
+    return _make_sound_from_buf(buf)
 
 def gen_death():
-    sr = 44100; n = int(sr * 0.4); buf = []
+    sr=44100; n=int(sr*0.4); buf=[]
     for i in range(n):
-        t = i/sr; f = 300 - 250*(i/n)
-        v = math.sin(2*math.pi*f*t)*math.exp(-2*t/0.4) + random.uniform(-0.08,0.08)*(1-i/n)
+        t=i/sr; f=300-250*(i/n)
+        v=math.sin(2*math.pi*f*t)*math.exp(-2*t/0.4)+random.uniform(-0.08,0.08)*(1-i/n)
         buf.append(int(v*0.35*32767))
-    return pygame.sndarray.make_sound(
-        pygame.sndarray.array(buf).astype("int16").reshape(-1,1).repeat(2,axis=1))
+    return _make_sound_from_buf(buf)
 
 def gen_levelup():
-    sr = 44100; n = int(sr * 0.3); buf = []
+    sr=44100; n=int(sr*0.3); buf=[]
     for i in range(n):
-        t = i/sr; p = i/n; f = 300 + 500*p + 200*math.sin(10*math.pi*p)
+        t=i/sr; p=i/n; f=300+500*p+200*math.sin(10*math.pi*p)
         buf.append(int(math.sin(2*math.pi*f*t)*(1-p*0.5)*0.3*32767))
-    return pygame.sndarray.make_sound(
-        pygame.sndarray.array(buf).astype("int16").reshape(-1,1).repeat(2,axis=1))
+    return _make_sound_from_buf(buf)
 
 def gen_click():
-    sr = 44100; n = int(sr * 0.06); buf = []
+    sr=44100; n=int(sr*0.06); buf=[]
     for i in range(n):
-        t = i/sr
+        t=i/sr
         buf.append(int(math.sin(2*math.pi*800*t)*math.exp(-8*t/0.06)*0.2*32767))
-    return pygame.sndarray.make_sound(
-        pygame.sndarray.array(buf).astype("int16").reshape(-1,1).repeat(2,axis=1))
+    return _make_sound_from_buf(buf)
 
 class _SilentSound:
     def play(self): pass
@@ -453,9 +455,8 @@ def draw_field_bg(surf, ox, oy, W, H):
     surf.blit(_field_cache[key],(ox,oy))
 
 def draw_grid(surf, ox, oy, CELL):
+    # Только рамка поля, без сетки
     W=COLS*CELL; H=ROWS*CELL
-    for c in range(COLS+1): pygame.draw.line(surf,GRID_C,(ox+c*CELL,oy),(ox+c*CELL,oy+H))
-    for r in range(ROWS+1): pygame.draw.line(surf,GRID_C,(ox,oy+r*CELL),(ox+W,oy+r*CELL))
     pygame.draw.rect(surf,(32,42,88),(ox,oy,W,H),2)
 
 # ══════════════════════════════════════════════════════════════
@@ -463,55 +464,103 @@ def draw_grid(surf, ox, oy, CELL):
 # ══════════════════════════════════════════════════════════════
 
 def draw_snake(surf, sn, CELL, ox, oy, skin, tk):
-    n=len(sn)
-    if n==0: return
-    for i in reversed(range(n)):
-        seg=sn[i]
-        cx2=ox+seg[0]*CELL+CELL//2
-        cy2=oy+seg[1]*CELL+CELL//2
-        t=i/max(n-1,1)
-        pad=max(1,CELL//12); R=CELL//2-pad
-        glow_col=skin["glow"]
+    """Литая змея — соединяет сегменты плавными полосами"""
+    n = len(sn)
+    if n == 0: return
 
-        if i==0:
-            g=make_glow(R+10,glow_col,75)
-            surf.blit(g,(cx2-R-11,cy2-R-11))
-            pulse=1.0+0.04*math.sin(tk*0.08)
-            Rp=int(R*pulse)
-            pygame.draw.circle(surf,skin["head_dark"],(cx2,cy2),Rp)
-            pygame.draw.circle(surf,skin["head2"],(cx2,cy2),int(Rp*0.82))
-            pygame.draw.circle(surf,skin["head1"],(cx2,cy2),int(Rp*0.58))
-            pygame.draw.circle(surf,skin["glow"],(cx2,cy2),Rp,2)
-            pygame.draw.ellipse(surf,lerpC(skin["head1"],(255,255,255),0.5),
-                pygame.Rect(cx2-Rp//3,cy2-int(Rp*0.55),Rp//2,Rp//3))
-            nd=(sn[1][0]-sn[0][0],sn[1][1]-sn[0][1]) if n>1 else (0,0)
-            er=max(2,R//5)
-            EM={(1,0):[(int(R*.5),int(-R*.35)),(int(R*.5),int(R*.35))],
-                (-1,0):[(int(-R*.5),int(-R*.35)),(int(-R*.5),int(R*.35))],
-                (0,1):[(int(-R*.35),int(R*.5)),(int(R*.35),int(R*.5))],
-                (0,-1):[(int(-R*.35),int(-R*.5)),(int(R*.35),int(-R*.5))]}
-            for ex,ey2 in EM.get((-nd[0],-nd[1]),[(int(R*.35),int(-R*.35)),(int(-R*.35),int(-R*.35))]):
-                ex2=cx2+ex; ey3=cy2+ey2
-                pygame.draw.circle(surf,(230,248,255),(ex2,ey3),er)
-                pygame.draw.circle(surf,(5,8,16),(ex2+1,ey3-1),max(1,er-1))
-                pygame.draw.circle(surf,(255,255,255),(ex2-1,ey3-1),max(1,er//3))
-        else:
-            ga=max(0,int(65*(1-t**0.5)))
-            if ga>6:
-                g=make_glow(R+5,glow_col,ga)
-                surf.blit(g,(cx2-R-6,cy2-R-6))
-            col_out=lerpC(skin["body1"],skin["body2"],t)
-            col_mid=lerpC(skin["head1"],skin["head_dark"],t)
-            col_in=lerpC(skin["head2"],skin["body1"],min(1,t*1.5))
-            pygame.draw.circle(surf,col_out,(cx2,cy2),R)
-            pygame.draw.circle(surf,col_mid,(cx2,cy2),int(R*0.76))
-            if t<0.55: pygame.draw.circle(surf,col_in,(cx2,cy2),int(R*0.46))
-            pygame.draw.circle(surf,lerpC(skin["outline"],skin["body2"],t),(cx2,cy2),R,2)
-            if t<0.42:
-                ba=int(160*(1-t/0.42))
-                bl=lerpC(skin["head1"],(200,255,220),0.4)
-                pygame.draw.ellipse(surf,(*bl,ba),
-                    pygame.Rect(cx2-R//3,cy2-int(R*0.55),R//2+1,R//3))
+    R = max(4, CELL//2 - 2)
+
+    # Собираем центры всех сегментов
+    pts = [(ox + seg[0]*CELL + CELL//2, oy + seg[1]*CELL + CELL//2) for seg in sn]
+
+    # ── 1. Свечение вдоль всего тела ────────────────────────
+    glow_surf = pygame.Surface((surf.get_width(), surf.get_height()), pygame.SRCALPHA)
+    for i in range(n-1):
+        t = i / max(n-1, 1)
+        ga = max(0, int(55 * (1 - t**0.6)))
+        if ga < 4: continue
+        x1, y1 = pts[i]; x2, y2 = pts[i+1]
+        col = skin["glow"]
+        pygame.draw.line(glow_surf, (*col, ga), (x1,y1), (x2,y2), R*2+6)
+    surf.blit(glow_surf, (0,0))
+
+    # ── 2. Тёмный контур (чуть толще тела) ──────────────────
+    for i in range(n-1):
+        t = i / max(n-1, 1)
+        col = lerpC(skin["outline"], skin["body2"], t)
+        x1,y1 = pts[i]; x2,y2 = pts[i+1]
+        pygame.draw.line(surf, col, (x1,y1), (x2,y2), R*2+4)
+
+    # Закругления на каждом сегменте (контур)
+    for i in range(n):
+        t = i / max(n-1, 1)
+        col = lerpC(skin["outline"], skin["body2"], t)
+        pygame.draw.circle(surf, col, pts[i], R+2)
+
+    # ── 3. Основное тело ─────────────────────────────────────
+    for i in range(n-1):
+        t = i / max(n-1, 1)
+        col = lerpC(skin["body1"], skin["body2"], t)
+        x1,y1 = pts[i]; x2,y2 = pts[i+1]
+        pygame.draw.line(surf, col, (x1,y1), (x2,y2), R*2)
+
+    # Закругления — заполняют стыки
+    for i in range(n):
+        t = i / max(n-1, 1)
+        col = lerpC(skin["body1"], skin["body2"], t)
+        pygame.draw.circle(surf, col, pts[i], R)
+
+    # ── 4. Внутренний блик (светлая полоска посередине) ──────
+    for i in range(n-1):
+        t = i / max(n-1, 1)
+        if t > 0.5: break
+        col = lerpC(skin["head1"], skin["body1"], t*2)
+        x1,y1 = pts[i]; x2,y2 = pts[i+1]
+        pygame.draw.line(surf, col, (x1,y1), (x2,y2), max(2, R-2))
+
+    for i in range(min(n, max(2, n//2))):
+        t = i / max(n-1, 1)
+        col = lerpC(skin["head1"], skin["body1"], t*2)
+        pygame.draw.circle(surf, col, pts[i], max(2, R-2))
+
+    # ── 5. Голова поверх всего ───────────────────────────────
+    hx, hy = pts[0]
+    pulse = 1.0 + 0.04*math.sin(tk*0.08)
+    Rh = int(R * pulse)
+
+    # Свечение головы
+    g = make_glow(Rh+12, skin["glow"], 80)
+    surf.blit(g, (hx-Rh-13, hy-Rh-13))
+
+    # Тело головы
+    pygame.draw.circle(surf, skin["head_dark"], (hx,hy), Rh)
+    pygame.draw.circle(surf, skin["head2"],     (hx,hy), int(Rh*0.82))
+    pygame.draw.circle(surf, skin["head1"],     (hx,hy), int(Rh*0.60))
+    pygame.draw.circle(surf, skin["glow"],      (hx,hy), Rh, 2)
+
+    # Блик на голове
+    pygame.draw.ellipse(surf, lerpC(skin["head1"],(255,255,255),0.55),
+        pygame.Rect(hx-Rh//3, hy-int(Rh*0.55), Rh//2, Rh//3))
+
+    # Глаза
+    nd = (sn[1][0]-sn[0][0], sn[1][1]-sn[0][1]) if n>1 else (0,0)
+    er = max(2, R//4)
+    EM = {
+        (1,  0): [(int(R*.5),  int(-R*.38)), (int(R*.5),   int(R*.38))],
+        (-1, 0): [(int(-R*.5), int(-R*.38)), (int(-R*.5),  int(R*.38))],
+        (0,  1): [(int(-R*.38),int(R*.5)),   (int(R*.38),  int(R*.5))],
+        (0, -1): [(int(-R*.38),int(-R*.5)),  (int(R*.38),  int(-R*.5))],
+    }
+    for ex,ey2 in EM.get((-nd[0],-nd[1]), [(int(R*.38),int(-R*.38)),(int(-R*.38),int(-R*.38))]):
+        ex2=hx+ex; ey3=hy+ey2
+        pygame.draw.circle(surf, (230,248,255), (ex2,ey3), er)
+        pygame.draw.circle(surf, (5,8,16),      (ex2+1,ey3-1), max(1,er-1))
+        pygame.draw.circle(surf, (255,255,255), (ex2-1,ey3-1), max(1,er//3))
+
+    # ── 6. Хвост — сужающийся кончик ────────────────────────
+    if n >= 2:
+        tx, ty = pts[-1]
+        pygame.draw.circle(surf, lerpC(skin["body2"],(0,0,0),0.3), (tx,ty), max(2, R//2))
 
 # ══════════════════════════════════════════════════════════════
 #  ЕДА
