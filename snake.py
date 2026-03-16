@@ -236,17 +236,21 @@ def gen_click():
     return pygame.sndarray.make_sound(
         pygame.sndarray.array(buf).astype("int16").reshape(-1,1).repeat(2,axis=1))
 
-try:
-    SND_EAT     = gen_eat()
-    SND_DEATH   = gen_death()
-    SND_LEVELUP = gen_levelup()
-    SND_CLICK   = gen_click()
-    SOUND_OK    = True
-except:
-    SOUND_OK = False
+class _SilentSound:
+    def play(self): pass
+    def stop(self): pass
+
+try:    SND_EAT     = gen_eat()
+except: SND_EAT     = _SilentSound()
+try:    SND_DEATH   = gen_death()
+except: SND_DEATH   = _SilentSound()
+try:    SND_LEVELUP = gen_levelup()
+except: SND_LEVELUP = _SilentSound()
+try:    SND_CLICK   = gen_click()
+except: SND_CLICK   = _SilentSound()
 
 def play_snd(snd, save):
-    if SOUND_OK and save.get("sound_on", True):
+    if save.get("sound_on", True):
         try: snd.play()
         except: pass
 
